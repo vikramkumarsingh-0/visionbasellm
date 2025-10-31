@@ -1,0 +1,154 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ML INJECTION SECURITY ARCHITECTURE                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER REQUEST                                    │
+│  POST /automate {"url": "...", "task": "...", "use_groq": false}           │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🛡️ LAYER 1: API INPUT VALIDATION (api.py)                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ✓ Pydantic validators                                                      │
+│  ✓ URL format check (http/https only)                                      │
+│  ✓ SSRF protection (block localhost/internal IPs)                          │
+│  ✓ Task length limit (500 chars)                                           │
+│  ✓ Pattern matching (15+ injection patterns)                               │
+│  ✓ Metrics: security_blocks_total++                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  BLOCKED: "http://localhost", "ignore instructions", "<script>"            │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │ ✓ VALIDATED
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AUTOMATION AGENT (automation_agent.py)                                     │
+│  ├─ Browser Engine → Screenshot                                             │
+│  ├─ Vision Detector → Detect UI elements                                    │
+│  └─ AI Reasoner → Decide action                                             │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🛡️ LAYER 2: PROMPT INJECTION PROTECTION (ai_reasoner.py)                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ✓ Task re-validation                                                       │
+│  ✓ System constraints wrapper                                               │
+│  ✓ User input isolation                                                     │
+│  ✓ Text sanitization (control chars, whitespace)                           │
+│  ✓ Structured prompt template                                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  PROMPT STRUCTURE:                                                           │
+│  [SYSTEM CONSTRAINTS]                                                        │
+│  - You are a web automation assistant                                        │
+│  - Only respond with valid JSON                                              │
+│  - Allowed actions: click, fill, scroll, wait                               │
+│  [USER REQUEST] {sanitized_task}                                            │
+│  [OUTPUT FORMAT] {...}                                                       │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LLM (Ollama/Groq)                                                          │
+│  Returns: {"action": "click", "target": {"x": 100, "y": 200}, ...}        │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🛡️ LAYER 3: LLM RESPONSE VALIDATION (security.py)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ✓ Action whitelist check (click|fill|scroll|wait|navigate)                │
+│  ✓ Coordinate bounds (0-10000)                                              │
+│  ✓ Selector XSS protection                                                  │
+│  ✓ Value length limit (1000 chars)                                          │
+│  ✓ Type validation (dict, str, int)                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  BLOCKED: action="delete_db", x=99999, selector="<script>alert(1)</script>" │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │ ✓ VALIDATED
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ACTION EXECUTOR (automation_agent.py)                                      │
+│  ├─ Click at coordinates                                                     │
+│  ├─ Fill input field                                                         │
+│  └─ Evaluate success/failure                                                 │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼ (if failure)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🛡️ LAYER 5: DATA POISONING PREVENTION (training_pipeline.py)              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ✓ Screenshot size limit (10MB)                                             │
+│  ✓ Bounding box validation                                                  │
+│  ✓ Coordinate sanity checks                                                 │
+│  ✓ Maximum samples limit (100)                                              │
+│  ✓ Invalid sample rejection                                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  BLOCKED: 50MB file, bbox=[99999,0,0,0], 1000+ samples                     │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │ ✓ VALIDATED
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  YOLO RETRAINING (vision_detector.py)                                       │
+│  ├─ Backup old model → yolo_v1.0.0_backup.pt                               │
+│  ├─ Train on validated data                                                 │
+│  └─ Save new model → yolo_v1.0.0_trained.pt                                │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🛡️ LAYER 4: MODEL INTEGRITY VERIFICATION (vision_detector.py)             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ✓ Compute SHA-256 hash                                                     │
+│  ✓ Store hash → yolo_v1.0.0_trained.pt.sha256                              │
+│  ✓ Verify on next load                                                      │
+│  ✓ Tamper detection                                                         │
+│  ✓ Automatic backup restoration                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  BLOCKED: Hash mismatch, corrupted file, unauthorized modification          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         ATTACK VECTORS BLOCKED                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  ❌ Prompt Injection      → Layer 1 & 2 (Regex + Sanitization)              ║
+║  ❌ SSRF                  → Layer 1 (URL Validation)                         ║
+║  ❌ XSS                   → Layer 1 & 3 (Input + Output Sanitization)       ║
+║  ❌ Data Poisoning        → Layer 5 (Training Data Validation)              ║
+║  ❌ Model Tampering       → Layer 4 (Hash Verification)                     ║
+║  ❌ SQL Injection         → Layer 1 (Pattern Blocking)                      ║
+║  ❌ Code Injection        → Layer 1 (Pattern Blocking)                      ║
+║  ❌ Resource Exhaustion   → All Layers (Limits Enforced)                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           MONITORING & METRICS                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  📊 Prometheus Metrics (http://localhost:8000/metrics)                      ║
+║     • security_blocks_total        → Blocked attacks                        ║
+║     • automation_requests_total    → Total requests                         ║
+║     • automation_failures_total    → Failed attempts                        ║
+║     • automation_success_total     → Successful runs                        ║
+║                                                                              ║
+║  📝 Logging (logs/api.log)                                                  ║
+║     • Security warnings                                                      ║
+║     • Blocked patterns                                                       ║
+║     • Validation failures                                                    ║
+║     • Model integrity checks                                                 ║
+╚══════════════════════════════════════════��═══════════════════════════════════╝
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          SECURITY STATUS: 🟢 ACTIVE                          ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  ✅ 5 Security Layers Implemented                                            ║
+║  ✅ 15+ Injection Patterns Blocked                                           ║
+║  ✅ Model Integrity Verification Active                                      ║
+║  ✅ Data Poisoning Prevention Enabled                                        ║
+║  ✅ Comprehensive Logging & Monitoring                                       ║
+║  ✅ Test Suite Passing                                                       ║
+║  ✅ Production Ready                                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝

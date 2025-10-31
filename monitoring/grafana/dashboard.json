@@ -1,0 +1,23 @@
+{
+  "dashboard": {
+    "title": "Vision Automation Metrics",
+    "panels": [
+      {
+        "title": "Success Rate",
+        "targets": [
+          {
+            "expr": "rate(automation_success_total[5m]) / (rate(automation_success_total[5m]) + rate(automation_failures_total[5m]))"
+          }
+        ]
+      },
+      {
+        "title": "Request Duration",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, automation_duration_seconds_bucket)"
+          }
+        ]
+      }
+    ]
+  }
+}

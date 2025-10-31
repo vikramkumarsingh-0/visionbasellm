@@ -1,0 +1,20 @@
+stages:
+  prepare_data:
+    cmd: python -c "from core.training_pipeline import TrainingPipeline; TrainingPipeline().prepare_dataset([])"
+    deps:
+      - data/screenshots
+    outs:
+      - data/train
+      - data/val
+
+  train_model:
+    cmd: python -c "from core.vision_detector import VisionDetector; VisionDetector().train('data/data.yaml')"
+    deps:
+      - data/train
+      - data/val
+      - data/data.yaml
+    outs:
+      - models/yolo_v1.0.0_trained.pt
+    metrics:
+      - metrics.json:
+          cache: false
