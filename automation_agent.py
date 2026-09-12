@@ -332,7 +332,10 @@ class AutomationAgent:
             # ---------- 3. TERMINATE ----------
             completed = goal_index >= len(sub_goals)
             if self.failed_actions:
-                self.training_pipeline.queue_failures(self.failed_actions)
+                if hasattr(self.training_pipeline, 'queue_failures'):
+                    self.training_pipeline.queue_failures(self.failed_actions)
+                elif self.failed_actions:
+                    self.training_pipeline.prepare_dataset(self.failed_actions)
 
             yield emit(
                 StepEvent(
@@ -377,7 +380,10 @@ class AutomationAgent:
         elif action == "navigate":
             browser.navigate(SecurityValidator.validate_url(value or ""))
         elif action == "press":
-            browser.press_key(value or "Enter")
+            key = (value or "Enter").strip().strip('"\'')
+            if key not in ("Enter","Tab","Escape","Backspace","Delete","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Home","End","PageUp","PageDown","Space"):
+                key = "Enter"
+            browser.press_key(key)
         elif action == "wait":
             browser.wait_for_network_idle(timeout=float(value or 5))
         elif action == "none":
