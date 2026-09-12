@@ -29,7 +29,11 @@ class VisionDetector:
         return YOLO('yolov8n.pt')
     
     def detect_elements(self, image_path: str, conf_threshold: float = 0.25) -> List[Dict]:
-        results = self.model(image_path, conf=conf_threshold)[0]
+        try:
+            results = self.model(image_path, conf=conf_threshold)[0]
+        except Exception as e:
+            logger.warning(f"YOLO detection unavailable, continuing with DOM-only perception: {e}")
+            return []
         detections = []
         
         for box in results.boxes:
