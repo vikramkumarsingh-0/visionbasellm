@@ -1,4 +1,10 @@
-from ultralytics import YOLO
+try:  # Optional heavy dependency: the agent runs DOM-only without it.
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except Exception:  # pragma: no cover - optional install
+    YOLO = None
+    YOLO_AVAILABLE = False
+
 import cv2
 from pathlib import Path
 from typing import List, Dict
@@ -12,6 +18,9 @@ class VisionDetector:
         self.model = self._load_model()
         
     def _load_model(self):
+        if not YOLO_AVAILABLE:
+            logger.warning("ultralytics/torch not installed - running DOM-only perception")
+            return None
         if self.model_path.exists():
             # Verify model integrity before loading
             try:
