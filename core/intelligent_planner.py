@@ -33,7 +33,10 @@ class IntelligentPlanner:
         """Split a goal into ordered sub-goals."""
 
         heuristic = self._heuristic_split(task)
-        if len(heuristic) > 1:
+        # A long multi-clause goal needs real decomposition: the "then"-split
+        # leaves several distinct actions inside one sub-goal.
+        prefer_llm = len(task) > 90 or task.count(",") >= 2
+        if len(heuristic) > 1 and not prefer_llm:
             logger.info(f"Planner (heuristic) produced {len(heuristic)} sub-goals")
             return heuristic[:MAX_SUB_GOALS]
 
@@ -45,7 +48,7 @@ class IntelligentPlanner:
 
         steps = [s for s in (s.strip() for s in steps) if s]
         logger.info(f"Planner (llm) produced {len(steps)} sub-goals")
-        return (steps or [task])[:MAX_SUB_GOALS]
+        return (steps or heuristic or [task])[:MAX_SUB_GOALS]
 
     def replan(
         self,
