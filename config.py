@@ -3,6 +3,7 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     groq_api_key: str = ""
+    action_settle_timeout: float = 5.0
     ollama_base_url: str = "http://localhost:11434"
     redis_url: str = "redis://localhost:6379"
     model_version: str = "v1.0.0"
