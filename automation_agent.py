@@ -20,6 +20,7 @@ automation_agent.py.
 from __future__ import annotations
 
 import base64
+import re
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -252,7 +253,38 @@ class AutomationAgent:
                     # --- verify ---
                     after_state = self._capture_state(browser)
                     evaluation = self.evaluator.evaluate(decision, before_state, after_state)
-                    goal_reached = self.reasoner.is_sub_goal_complete(
+
+                    # Trust the DOM when it already proves the step landed:
+                    # a typed value that reads back, or a box that is now checked.
+                    # Count action verbs only in the instruction itself: a trailing
+                    # "and verify it is selected" clause is not a second action.
+                    instruction = re.split(
+                        r"\s+and\s+(?:verify|confirm|check that|ensure)\b",
+                        sub_goal.lower(),
+                    )[0]
+                    single_action = len(
+                        re.findall(
+                            r"\b(type|enter|click|select|check|fill|tick|choose)\b",
+                            instruction,
+                        )
+                    ) <= 1
+                    state_ok = False
+                    selector = decision.get("selector")
+                    if selector and decision.get("action") == "type":
+                        state_ok = (
+                            browser.input_value(selector).strip()
+                            == str(decision.get("value") or "").strip()
+                        )
+                    elif selector and decision.get("action") in ("click", "press"):
+                        state_ok = browser.is_checked(selector)
+                    if state_ok:
+                        evaluation["success"] = True
+                        evaluation.setdefault(
+                            "reason", "The page state now matches the requested change."
+                        )
+                    state_ok = state_ok and single_action
+
+                    goal_reached = state_ok or self.reasoner.is_sub_goal_complete(
                         sub_goal=sub_goal,
                         before_state=before_state,
                         after_state=after_state,
@@ -368,6 +400,11 @@ class AutomationAgent:
         action = decision.get("action")
         selector = decision.get("selector")
         value = decision.get("value")
+
+        if action in ("click", "type", "select") and not selector:
+            raise ValueError(
+                f"Action {action!r} needs a selector; pick one from the detected elements."
+            )
 
         if action == "click":
             browser.click(selector)
