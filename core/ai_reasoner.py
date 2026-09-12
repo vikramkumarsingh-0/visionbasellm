@@ -126,9 +126,9 @@ class AIReasoner:
         # A deterministic signal beats a model call when the evaluator is confident.
         if evaluation.get("success") is True and evaluation.get("confidence", 0) >= 0.8:
             return True
-        if before_state.get("dom_hash") == after_state.get("dom_hash"):
-            # Nothing changed at all — the action almost certainly did not land.
-            return False
+        # A stable DOM is only a hint, not a verdict: no-op actions such as
+        # re-navigating to the current URL can still satisfy a sub-goal, so
+        # always let the model judge from url/title/visible text below.
 
         prompt = (
             "Did this browser state change satisfy the sub-goal?\n"
