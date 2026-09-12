@@ -195,6 +195,10 @@ class AIReasoner:
         for element in dom_elements[:60]:
             lines.append(
                 f"- selector={element.get('selector')} tag={element.get('tag')} "
+                f"type={element.get('type') or ''} name={element.get('name') or ''} "
+                f"label={(element.get('label') or '')[:40]!r} "
+                f"placeholder={(element.get('placeholder') or '')[:40]!r} "
+                f"value={(element.get('value') or '')[:40]!r} "
                 f"text={(element.get('text') or '')[:60]!r} "
                 f"aria={(element.get('aria_label') or '')[:40]!r}"
             )
