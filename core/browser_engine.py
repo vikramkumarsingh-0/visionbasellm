@@ -4,6 +4,7 @@ from pathlib import Path
 from loguru import logger
 from config import settings
 import json
+import hashlib
 import random
 
 class BrowserEngine:
@@ -202,3 +203,41 @@ class BrowserEngine:
     def get_storage(self, key: str) -> str:
         """Get localStorage item"""
         return self.page.evaluate(f'localStorage.getItem("{key}")')
+
+    # ---- v3 agent compatibility layer -------------------------------------
+    def current_url(self) -> str:
+        return self.page.url
+
+    def get_title(self) -> str:
+        return self.page.title()
+
+    def click(self, selector: str):
+        self.page.click(selector, timeout=8000)
+
+    def type_text(self, selector: str, text: str):
+        self.page.fill(selector, text, timeout=8000)
+
+    def select_option(self, selector: str, value: str):
+        self.page.select_option(selector, value, timeout=8000)
+
+    def scroll(self, direction: str = "down"):
+        delta = 600 if direction != "up" else -600
+        self.page.mouse.wheel(0, delta)
+
+    def press_key(self, key: str = "Enter"):
+        self.page.keyboard.press(key)
+
+    def wait_for_network_idle(self, timeout: float = 5):
+        try:
+            self.page.wait_for_load_state('networkidle', timeout=int(timeout * 1000))
+        except Exception:
+            pass
+
+    def dom_fingerprint(self) -> str:
+        return hashlib.sha256(self.page.content().encode()).hexdigest()[:16]
+
+    def visible_text(self) -> str:
+        try:
+            return self.page.evaluate("() => document.body ? document.body.innerText : ''")
+        except Exception:
+            return ""
