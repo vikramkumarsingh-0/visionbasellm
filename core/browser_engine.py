@@ -80,6 +80,38 @@ class BrowserEngine:
     def extract_dom_elements(self) -> List[Dict]:
         js_code = """
         () => {
+            const cssEscape = (v) => (window.CSS && CSS.escape) ? CSS.escape(v) : v.replace(/["\\\\]/g, '\\\\$&');
+            const uniqueSelector = (el) => {
+                if (el.id) return '#' + cssEscape(el.id);
+                const attrs = ['data-testid', 'name', 'aria-label', 'placeholder'];
+                for (const a of attrs) {
+                    const v = el.getAttribute(a);
+                    if (v) {
+                        const sel = el.tagName.toLowerCase() + '[' + a + '="' + v.replace(/"/g, '\\\\"') + '"]';
+                        try { if (document.querySelectorAll(sel).length === 1) return sel; } catch (e) {}
+                    }
+                }
+                // Fall back to a positional path so the selector is always unique.
+                const parts = [];
+                let node = el;
+                while (node && node.nodeType === 1 && parts.length < 6) {
+                    let part = node.tagName.toLowerCase();
+                    const parent = node.parentElement;
+                    if (parent) {
+                        const sibs = Array.from(parent.children).filter(c => c.tagName === node.tagName);
+                        if (sibs.length > 1) part += ':nth-of-type(' + (sibs.indexOf(node) + 1) + ')';
+                    }
+                    parts.unshift(part);
+                    if (node.id) { parts[0] = '#' + cssEscape(node.id); break; }
+                    node = node.parentElement;
+                }
+                return parts.join(' > ');
+            };
+            const labelFor = (el) => {
+                if (el.labels && el.labels.length) return el.labels[0].innerText.trim().substring(0, 80);
+                const wrap = el.closest('label');
+                return wrap ? wrap.innerText.trim().substring(0, 80) : '';
+            };
             const elements = document.querySelectorAll('button, a, input, textarea, select, [role="button"]');
             return Array.from(elements).map(el => {
                 const rect = el.getBoundingClientRect();
@@ -87,8 +119,14 @@ class BrowserEngine:
                     tag: el.tagName.toLowerCase(),
                     text: el.innerText?.substring(0, 100) || el.value || '',
                     type: el.type || '',
+                    name: el.getAttribute('name') || '',
+                    placeholder: el.getAttribute('placeholder') || '',
+                    aria_label: el.getAttribute('aria-label') || '',
+                    label: labelFor(el),
+                    value: (el.value ?? '').toString().substring(0, 100),
+                    checked: !!el.checked,
                     bbox: [rect.left, rect.top, rect.right, rect.bottom],
-                    selector: el.id ? `#${el.id}` : el.className ? `.${el.className.split(' ')[0]}` : el.tagName.toLowerCase(),
+                    selector: uniqueSelector(el),
                     visible: rect.width > 0 && rect.height > 0
                 };
             }).filter(el => el.visible);
@@ -97,7 +135,20 @@ class BrowserEngine:
         elements = self.page.evaluate(js_code)
         logger.info(f"Extracted {len(elements)} DOM elements")
         return elements
-    
+
+    def input_value(self, selector: str) -> str:
+        """Read back a field value so a type action can be verified deterministically."""
+        try:
+            return self.page.input_value(selector, timeout=2000)
+        except Exception:
+            return ""
+
+    def is_checked(self, selector: str) -> bool:
+        try:
+            return bool(self.page.is_checked(selector, timeout=2000))
+        except Exception:
+            return False
+
     def click_at_coordinates(self, x: int, y: int):
         logger.info(f"Clicking at coordinates ({x}, {y})")
         self.page.mouse.click(x, y)
